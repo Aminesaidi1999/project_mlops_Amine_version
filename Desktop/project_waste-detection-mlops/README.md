@@ -5,8 +5,7 @@
 End-to-end MLOps stack for the urban waste-detection drone scenario described in [`projet.md`](projet.md). One `docker compose up -d` brings every component online: 8 detection models in MLflow, a FastAPI inference server, a Streamlit operator UI with a live Folium map, an Airflow ETL pipeline that promotes drone-patrol detections into the operator app, and a full Prometheus + Grafana + Alertmanager observability lane.
 
 - **Reference repo (provided weights & test image)**: <https://github.com/sinaayyy/project_mlops>
-- **This repo**: <https://github.com/YoussefRais12/waste-detection-mlops>
-- **CI image**: `ghcr.io/youssefrais12/waste-detection-api:latest` (pushed by the workflow on every push to `main`)
+- **This repo**: [<https://github.com/YoussefRais12/waste-detection-mlops>](https://github.com/Aminesaidi1999/waste-detection-mlops/tree/master)
 
 ---
 
@@ -98,7 +97,7 @@ waste-detection-mlops/
 ## 1. Setup
 
 ```bash
-git clone https://github.com/YoussefRais12/waste-detection-mlops.git
+git clone https://github.com/Aminesaidi1999/waste-detection-mlops/tree/master
 cd waste-detection-mlops
 
 # Seed the drone DB once so DAG 1's first run isn't required to see data on the map.
