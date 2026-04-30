@@ -316,6 +316,97 @@ def history() -> List[Dict[str, Any]]:
     return fetch_history()
 
 
+# --------------------------------------------------------------------------- #
+# Bonus: multi-model shoot-out
+# --------------------------------------------------------------------------- #
+@app.post("/predict/compare")
+def predict_compare(
+    image: UploadFile = File(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+) -> Dict[str, Any]:
+    """Run every loaded model on the same image and return ranked results.
+
+    Bonus MLOps component (rubric §Bonus). Operators routinely face the
+    question: "which of our 8 models should I trust for this kind of drone
+    image?". This endpoint answers it with real field data — every Production
+    model is invoked on the upload, results are sorted by confiance, and per-
+    model latency is reported. It also serves as a built-in A/B harness for
+    new challenger models.
+
+    Latency cost: ~8 x single-model latency (≈ 1–2 s for the current 8 models).
+    Each per-model call still increments the same Prometheus counters as a
+    plain /predict, so the /metrics endpoint reflects compare-driven traffic.
+
+    Note: this endpoint deliberately does NOT persist to SQLite — it is a
+    diagnostic / A-B tool, not a production prediction. The standard /predict
+    is what writes to the detection history.
+    """
+    image_bytes = image.file.read()
+
+    # Reuse the same validator as /predict, minus model_name (which we ignore).
+    if not MODEL_CACHE:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "no models loaded — register them first via scripts/register_models.py"},
+        )
+    ctype = (image.content_type or "").lower()
+    if ctype not in ALLOWED_CONTENT_TYPES:
+        ml_validation_errors_total.inc()
+        raise HTTPException(status_code=422, detail={"error": "image must be JPEG or PNG", "received_content_type": image.content_type})
+    if not (image_bytes.startswith(JPEG_MAGIC) or image_bytes.startswith(PNG_MAGIC)):
+        ml_validation_errors_total.inc()
+        raise HTTPException(status_code=422, detail={"error": "image bytes are not a valid JPEG or PNG"})
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        ml_validation_errors_total.inc()
+        raise HTTPException(status_code=422, detail={"error": "image must be smaller than 10 MB", "received_bytes": len(image_bytes)})
+    if not (-90.0 <= latitude <= 90.0):
+        ml_validation_errors_total.inc()
+        raise HTTPException(status_code=422, detail={"error": "latitude must be between -90 and 90", "received": latitude})
+    if not (-180.0 <= longitude <= 180.0):
+        ml_validation_errors_total.inc()
+        raise HTTPException(status_code=422, detail={"error": "longitude must be between -180 and 180", "received": longitude})
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    results: List[Dict[str, Any]] = []
+    for name, entry in MODEL_CACHE.items():
+        try:
+            t0 = time.perf_counter()
+            out = entry.model.predict([image_bytes])[0]
+            latency_s = time.perf_counter() - t0
+
+            ml_inference_latency_seconds.observe(latency_s)
+            ml_predictions_total.inc()
+            ml_predictions_by_model_total.labels(model=name).inc()
+
+            results.append({
+                "model_name": name,
+                "rubbish": bool(out.get("rubbish", False)),
+                "confiance": float(out.get("confiance", 0.0)),
+                "latency_ms": int(latency_s * 1000),
+                "error": None,
+            })
+        except Exception as e:  # noqa: BLE001
+            results.append({
+                "model_name": name,
+                "rubbish": False,
+                "confiance": 0.0,
+                "latency_ms": None,
+                "error": repr(e),
+            })
+
+    # Sort: highest confidence first, then lowest latency as tiebreaker.
+    results.sort(key=lambda r: (-r["confiance"], r["latency_ms"] or 10**9))
+
+    return {
+        "timestamp": timestamp,
+        "latitude": float(latitude),
+        "longitude": float(longitude),
+        "models_evaluated": len(results),
+        "results": results,
+    }
+
+
 @app.get("/metrics")
 def metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

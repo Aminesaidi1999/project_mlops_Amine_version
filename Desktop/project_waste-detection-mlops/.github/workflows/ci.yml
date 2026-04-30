@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ------------------------------------------------------------------------ #
+  # Stage 1 — Unit tests on a bare runner (no Docker, no MLflow). The unit
+  # suite mocks model loading, so we only need a slim FastAPI/MLflow env.
+  # ------------------------------------------------------------------------ #
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install runtime + test deps (skip the ultralytics fork — heavy git+ install not needed for unit tests)
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            fastapi==0.115.5 uvicorn==0.32.1 python-multipart==0.0.18 pydantic==2.10.3 \
+            mlflow==2.18.0 prometheus-client==0.21.1 python-json-logger==2.0.7 \
+            requests==2.32.3 Pillow==11.0.0 numpy==1.26.4 \
+            pytest==8.3.4 httpx==0.28.1
+
+      - name: Run unit tests
+        run: pytest api/tests/test_unit.py -v -W ignore::DeprecationWarning
+        env:
+          PYTHONPATH: api
+
+  # ------------------------------------------------------------------------ #
+  # Stage 2 — Build images, run integration tests against the live stack,
+  # and (on main only) push the API image to GHCR.
+  # ------------------------------------------------------------------------ #
+  integration-and-publish:
+    name: Integration tests + push to GHCR
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build api & app images via docker compose
+        run: docker compose build
+
+      - name: Bring up MLflow and wait for it to be healthy
+        run: |
+          docker compose up -d mlflow
+          for i in {1..60}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' mlflow 2>/dev/null || echo "starting")
+            echo "  attempt $i: mlflow=$STATUS"
+            if [ "$STATUS" = "healthy" ]; then break; fi
+            sleep 2
+          done
+          [ "$STATUS" = "healthy" ] || (echo "MLflow never became healthy"; docker compose logs mlflow; exit 1)
+
+      - name: Register all 8 models in MLflow (one-shot via the api image)
+        run: docker compose run --rm api python /app/scripts/register_models.py
+
+      - name: Bring up the full stack
+        run: docker compose up -d
+
+      - name: Wait for API to load all 8 models
+        run: |
+          MODELS=0
+          for i in {1..90}; do
+            MODELS=$(curl -fs http://localhost:8000/health 2>/dev/null \
+                     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("models_loaded",0))' 2>/dev/null \
+                     || echo 0)
+            echo "  attempt $i: models_loaded=$MODELS"
+            if [ "$MODELS" = "8" ]; then break; fi
+            sleep 2
+          done
+          [ "$MODELS" = "8" ] || (echo "API did not load 8 models in time"; docker compose logs api; exit 1)
+
+      - name: Run integration tests inside the api container
+        run: docker compose exec -T api pytest /app/tests/test_integration.py -v -W ignore::DeprecationWarning
+
+      - name: Login to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Tag and push api image to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/$OWNER/waste-detection-api"
+          docker tag waste-detection-api:latest $IMAGE:latest
+          docker tag waste-detection-api:latest $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
+          echo "Pushed $IMAGE:latest and $IMAGE:${{ github.sha }}"
+
+      - name: Show stack logs on failure
+        if: failure()
+        run: docker compose logs --tail 200

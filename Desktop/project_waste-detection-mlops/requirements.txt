@@ -29,7 +29,10 @@ pytest-asyncio==0.24.0
 httpx==0.28.1
 
 # === Inference (heavy — installed in API image) ===
-ultralytics==8.3.45
+# We use a custom ultralytics fork (rebased on 8.4.x) so the fusion model's
+# RTDETRDecoder is available. The same fork ships YOLO + RTDETR, so it
+# replaces the upstream ultralytics package.
+ultralytics @ git+https://github.com/sialaoui/ultralytics.git@feat/yolo-rtdetr
 torch==2.5.1
 torchvision==0.20.1
 transformers==4.47.0

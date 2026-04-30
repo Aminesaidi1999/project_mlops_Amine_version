@@ -68,10 +68,20 @@ def post_predict(image_bytes: bytes, image_name: str, content_type: str,
     )
 
 
+def post_compare(image_bytes: bytes, image_name: str, content_type: str,
+                 lat: float, lon: float) -> requests.Response:
+    return requests.post(
+        f"{API_URL}/predict/compare",
+        files={"image": (image_name, image_bytes, content_type or "image/jpeg")},
+        data={"latitude": lat, "longitude": lon},
+        timeout=120,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Tabs
 # --------------------------------------------------------------------------- #
-tab_predict, tab_map = st.tabs(["Predict", "Map & History"])
+tab_predict, tab_map, tab_compare = st.tabs(["Predict", "Map & History", "Compare Models (Bonus)"])
 
 
 # --- Predict --------------------------------------------------------------- #
@@ -226,3 +236,71 @@ with tab_map:
                 use_container_width=True,
                 hide_index=True,
             )
+
+
+# --- Compare Models (Bonus) ----------------------------------------------- #
+with tab_compare:
+    st.markdown(
+        "**Multi-model shoot-out.** Upload one image and run *every* loaded model "
+        "against it. Results are ranked by confidence with per-model latency, "
+        "useful for picking the right model for a given image style or A/B-testing "
+        "a new challenger against the incumbents."
+    )
+    with st.form("compare"):
+        uploaded_c = st.file_uploader(
+            "Drone image (JPEG or PNG, ≤ 10 MB)",
+            type=["jpg", "jpeg", "png"],
+            key="compare_uploader",
+        )
+        c1, c2 = st.columns(2)
+        with c1:
+            lat_c = st.number_input("Latitude", min_value=-90.0, max_value=90.0,
+                                    value=DEFAULT_CENTER[0], format="%.6f", key="compare_lat")
+        with c2:
+            lon_c = st.number_input("Longitude", min_value=-180.0, max_value=180.0,
+                                    value=DEFAULT_CENTER[1], format="%.6f", key="compare_lon")
+        submit_c = st.form_submit_button("Run shoot-out", type="primary")
+
+    if submit_c:
+        if uploaded_c is None:
+            st.error("Please upload an image.")
+        else:
+            with st.spinner("Running every loaded model… (8 sequential inferences)"):
+                resp_c = post_compare(uploaded_c.getvalue(), uploaded_c.name,
+                                      uploaded_c.type, lat_c, lon_c)
+            if resp_c.status_code == 200:
+                payload = resp_c.json()
+                results = payload["results"]
+                df_c = pd.DataFrame(results)
+                df_c["model_short"] = df_c["model_name"].str.replace("waste-detector-", "", regex=False)
+
+                top = df_c.iloc[0]
+                kc1, kc2, kc3 = st.columns(3)
+                kc1.metric("Winner", top["model_short"])
+                kc2.metric("Top confidence", f"{top['confiance']:.1%}")
+                kc3.metric("Models evaluated", payload["models_evaluated"])
+
+                st.subheader("Confidence ranking")
+                st.bar_chart(df_c.set_index("model_short")["confiance"], horizontal=True)
+
+                st.subheader("Latency per model (ms)")
+                st.bar_chart(
+                    df_c.assign(latency_ms=df_c["latency_ms"].fillna(0)).set_index("model_short")["latency_ms"],
+                    horizontal=True,
+                )
+
+                st.dataframe(
+                    df_c[["model_name", "rubbish", "confiance", "latency_ms", "error"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                st.caption(
+                    "This endpoint does NOT persist to /history — it is a diagnostic / "
+                    "A-B tool. Use the Predict tab for production-tracked predictions."
+                )
+            else:
+                try:
+                    detail = resp_c.json().get("detail", resp_c.text)
+                except ValueError:
+                    detail = resp_c.text
+                st.error(f"HTTP {resp_c.status_code}: {detail}")

@@ -62,7 +62,12 @@ def app_client():
 # --------------------------------------------------------------------------- #
 def test_pyfunc_stub_returns_canonical_shape(tmp_path):
     """The shared pyfunc 'stub' branch must always return {rubbish, confiance, model_name}."""
-    sys.path.insert(0, "/app/scripts")
+    # Path differs in container (/app/scripts) vs CI runner (<repo>/scripts).
+    from pathlib import Path as _P
+    for candidate in [_P("/app/scripts"), _P(__file__).resolve().parents[2] / "scripts"]:
+        if candidate.exists():
+            sys.path.insert(0, str(candidate))
+            break
     from waste_detector_pyfunc import WasteDetectorPyFunc
 
     cfg = tmp_path / "config.json"
