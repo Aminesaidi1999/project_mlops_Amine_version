@@ -17,12 +17,7 @@ numpy==1.26.4
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.5.1+cpu
 torchvision==0.20.1+cpu
-# Custom ultralytics fork (rebased on upstream 8.4.x). The fork is required by
-# the fusion model (yolov8n_yolo_neck_rtdetr_head.yaml uses RTDETRDecoder added
-# in feat/yolo-rtdetr) and provides all standard YOLO + RTDETR classes for the
-# other models. Pinning the upstream version separately would conflict with the
-# fork's reported version, so we depend on the fork only.
-ultralytics @ git+https://github.com/sialaoui/ultralytics.git@feat/yolo-rtdetr
+ultralytics==8.3.47
 transformers==4.47.0
 
 # Tests run inside the image for the integration test step

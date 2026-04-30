@@ -4,10 +4,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# System deps: opencv (libgl1/libglib), curl for healthcheck, git for pip-installing the custom ultralytics fork
+# System deps for OpenCV (used by ultralytics) and curl for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
-        git \
         libgl1 \
         libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
