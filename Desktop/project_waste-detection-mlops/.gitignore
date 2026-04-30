@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.local
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/*.jsonl
+*.log
+
+# Databases (regenerated locally — do not track)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Model weights (>100MB rule, and they come from the professor's repo)
+*.pt
+*.onnx
+*.pth
+
+# MLflow runtime
+mlruns/
+mlflow.db
+mlflow-artifacts/
+mlartifacts/
+
+# Airflow runtime
+airflow.cfg
+airflow.db
+airflow-webserver.pid
+standalone_admin_password.txt
+webserver_config.py
+
+# Docker
+.docker/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Shared sqlite directory (created by docker compose, populated at runtime)
+data/*
+!data/.gitkeep
+
+# Keep folder structure markers
+!**/.gitkeep

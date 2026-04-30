@@ -1,0 +1,74 @@
+{
+  "id": null,
+  "uid": "waste-detection",
+  "title": "Waste Detection — Drone Patrols",
+  "tags": ["mlops", "waste-detection"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Requests per minute",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(ml_predictions_total[1m]) * 60",
+          "legendFormat": "predictions/min"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Inference latency (p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(ml_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95 (s)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "barchart",
+      "title": "Detections per model",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (model) (ml_predictions_by_model_total)",
+          "legendFormat": "{{model}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Validation error rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(ml_validation_errors_total[5m])",
+          "legendFormat": "errors/sec"
+        }
+      ]
+    }
+  ]
+}

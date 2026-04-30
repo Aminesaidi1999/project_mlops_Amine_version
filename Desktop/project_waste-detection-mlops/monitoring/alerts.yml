@@ -1,0 +1,23 @@
+groups:
+  - name: waste-detection-api
+    rules:
+      - alert: APIDown
+        expr: up{job="waste-detection-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Waste detection API is unreachable"
+          description: "Prometheus has been unable to scrape api:8000/metrics for more than 30s."
+
+      - alert: HighValidationErrorRate
+        expr: |
+          rate(ml_validation_errors_total[5m])
+            / clamp_min(rate(ml_predictions_total[5m]) + rate(ml_validation_errors_total[5m]), 1)
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Validation error rate above 5% (5 min window)"
+          description: "More than 5% of /predict calls have failed input validation in the last 5 minutes."
