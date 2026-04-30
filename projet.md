@@ -5,7 +5,7 @@
 **Teams**: Pairs
 **Submission**: Private GitHub repository — invite the professor before the deadline
 **Evaluated branch**: `main`
-**Deadline**: `[TO BE FILLED IN]`
+**Deadline**: `31 April, 2026`
 
 ---
 Source repo : https://github.com/sinaayyy/project_mlops

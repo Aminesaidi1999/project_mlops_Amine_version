@@ -1,0 +1,30 @@
+# API container deps
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.18
+pydantic==2.10.3
+
+mlflow==2.18.0
+
+prometheus-client==0.21.1
+python-json-logger==2.0.7
+
+requests==2.32.3
+Pillow==11.0.0
+numpy==1.26.4
+
+# ML inference (CPU-only torch — saves ~2.2GB of CUDA libs)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
+torchvision==0.20.1+cpu
+# Custom ultralytics fork (rebased on upstream 8.4.x). The fork is required by
+# the fusion model (yolov8n_yolo_neck_rtdetr_head.yaml uses RTDETRDecoder added
+# in feat/yolo-rtdetr) and provides all standard YOLO + RTDETR classes for the
+# other models. Pinning the upstream version separately would conflict with the
+# fork's reported version, so we depend on the fork only.
+ultralytics @ git+https://github.com/sialaoui/ultralytics.git@feat/yolo-rtdetr
+transformers==4.47.0
+
+# Tests run inside the image for the integration test step
+pytest==8.3.4
+httpx==0.28.1

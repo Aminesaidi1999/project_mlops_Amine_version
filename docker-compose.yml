@@ -1,0 +1,161 @@
+# Full waste-detection stack — `docker compose up -d` brings everything online.
+# Bind mount ./data:/data is shared between api and airflow for the two SQLite DBs:
+#   /data/app_detections.db   ← written by api (manual uploads) and DAG 2 load step
+#   /data/drone_patrol.db     ← written by DAG 1 via generate_patrol_db.py
+
+name: waste-detection
+
+services:
+  # -------------------------------------------------------------------------
+  # MLflow — model registry + tracking server (sqlite backend, local artifacts)
+  # -------------------------------------------------------------------------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.18.0
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # -------------------------------------------------------------------------
+  # FastAPI — inference API (loads all 8 MLflow Production models at startup)
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: ./api
+    container_name: api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+      - ./models:/app/models:ro
+      - ./scripts:/app/scripts:ro
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      APP_DB_PATH: /data/app_detections.db
+      LOG_PATH: /app/logs/predictions.jsonl
+      MODELS_DIR: /app/models
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # Streamlit — operator UI + Folium map
+  # -------------------------------------------------------------------------
+  app:
+    build:
+      context: ./app
+    container_name: app
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_started
+
+  # -------------------------------------------------------------------------
+  # Airflow — runs both DAGs (mission simulator + drone-to-app sync)
+  # standalone-style: db migrate + create user + scheduler + webserver
+  # -------------------------------------------------------------------------
+  airflow:
+    image: apache/airflow:2.10.4-python3.11
+    container_name: airflow
+    user: "0:0"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/data
+      - ./generate_patrol_db.py:/opt/airflow/generate_patrol_db.py:ro
+      - airflow_logs:/opt/airflow/logs
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+      AIRFLOW__WEBSERVER__WORKERS: "2"
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+      AIRFLOW_UID: "0"
+      _PIP_ADDITIONAL_REQUIREMENTS: ""
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        airflow db migrate
+        airflow users create \
+          --username airflow --password airflow \
+          --firstname admin --lastname admin \
+          --role Admin --email admin@example.com 2>/dev/null || true
+        airflow scheduler &
+        exec airflow webserver
+
+  # -------------------------------------------------------------------------
+  # Prometheus — scrapes /metrics from the API + loads alert rules
+  # -------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+
+  # -------------------------------------------------------------------------
+  # Grafana — dashboard + datasource provisioned from monitoring/
+  # -------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboard.json:/etc/grafana/dashboards/dashboard.json:ro
+    depends_on:
+      - prometheus
+
+  # -------------------------------------------------------------------------
+  # Alertmanager — receives alerts from Prometheus
+  # -------------------------------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+
+volumes:
+  mlflow_data:
+  airflow_logs:
+  prometheus_data:
+  grafana_data:

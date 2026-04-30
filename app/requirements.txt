@@ -1,0 +1,7 @@
+# Streamlit container deps
+streamlit==1.41.1
+folium==0.19.2
+streamlit-folium==0.24.0
+pandas==2.2.3
+requests==2.32.3
+Pillow==11.0.0

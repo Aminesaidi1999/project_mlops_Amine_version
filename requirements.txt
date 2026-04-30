@@ -1,0 +1,39 @@
+# Master requirements file — `pip install -r requirements.txt` reproduces the full env.
+# Service-specific Dockerfiles use api/requirements.txt and app/requirements.txt
+# to keep individual images lean.
+
+# === API: FastAPI ===
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.18
+pydantic==2.10.3
+
+# === MLflow ===
+mlflow==2.18.0
+
+# === Streamlit UI ===
+streamlit==1.41.1
+folium==0.19.2
+streamlit-folium==0.24.0
+pandas==2.2.3
+requests==2.32.3
+Pillow==11.0.0
+
+# === Observability ===
+prometheus-client==0.21.1
+python-json-logger==2.0.7
+
+# === Testing ===
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1
+
+# === Inference (heavy — installed in API image) ===
+# We use a custom ultralytics fork (rebased on 8.4.x) so the fusion model's
+# RTDETRDecoder is available. The same fork ships YOLO + RTDETR, so it
+# replaces the upstream ultralytics package.
+ultralytics @ git+https://github.com/sialaoui/ultralytics.git@feat/yolo-rtdetr
+torch==2.5.1
+torchvision==0.20.1
+transformers==4.47.0
+numpy==1.26.4
