@@ -36,6 +36,10 @@ logs/*.jsonl
 *.pt
 *.onnx
 *.pth
+# Exception: the yolov8 weight from prof's repo (6 MB, safely under the 100 MB rule).
+# Committed so the registration script picks up real weights on a fresh clone
+# without requiring network access to the prof's repo at bootstrap time.
+!models/yolov8n/best.pt
 
 # MLflow runtime
 mlruns/

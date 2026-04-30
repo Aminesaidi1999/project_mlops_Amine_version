@@ -43,10 +43,12 @@ services:
       - ./data:/data
       - ./logs:/app/logs
       - ./models:/app/models:ro
+      - ./scripts:/app/scripts:ro
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       APP_DB_PATH: /data/app_detections.db
       LOG_PATH: /app/logs/predictions.jsonl
+      MODELS_DIR: /app/models
     depends_on:
       mlflow:
         condition: service_healthy
