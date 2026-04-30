@@ -142,7 +142,11 @@ with tab_map:
                 "or wait for the drone-patrol DAG to land some.")
     else:
         df = pd.DataFrame(history)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        # API writes microsecond+offset timestamps ("2026-04-29T17:07:33.434313+00:00")
+        # while the drone simulator writes second-precision Z timestamps
+        # ("2026-04-29T15:42:50Z"). Both are valid ISO 8601, but pandas 2.2 needs
+        # an explicit format='ISO8601' to accept both shapes in the same column.
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, format="ISO8601")
 
         st.markdown("**Filters**")
         f1, f2, f3 = st.columns([1, 1, 2])
